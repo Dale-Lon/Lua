@@ -1,0 +1,273 @@
+--THIS SHIT YOU SHOULD NOT NEED TO MESS WITH
+if (SERVER) then
+	AddCSLuaFile("shared.lua")
+	
+	resource.AddFile("sound/weapons/weapon_pet/dogbark_1.mp3")
+	resource.AddFile("sound/weapons/weapon_pet/doggrowl_1.mp3")
+	resource.AddFile("sound/weapons/weapon_pet/doggrowl_2.mp3")
+	
+	resource.AddFile("materials/vgui/weapons/weapon_pet/biteicon.vtf")
+	resource.AddFile("materials/vgui/weapons/weapon_pet/biteicon.vmt")
+	
+	resource.AddFile("models/weapons/blank.mdl")
+	
+	SWEP.Weight = 10
+end
+--END OF SHIT THAT SHOULDN'T BE MESSED WITH
+
+if (CLIENT) then
+	SWEP.BounceWeaponIcon = false
+	SWEP.WepSelectIcon = surface.GetTextureID("vgui/weapons/weapon_pet/biteicon")
+	killicon.Add("weapon_pet", "vgui/weapons/weapon_pet/biteicon", Color(255, 80, 0, 255))
+end
+
+SWEP.Author = "Alaska"
+--Credit for audio resources: audioblocks.com
+--Haxed the fuck out of the CS:GO Knives SWep for fixing bite physics: http://steamcommunity.com/sharedfiles/filedetails/?id=506283460
+SWEP.Contact = ""
+SWEP.Purpose = "All bark... but can it bite?"
+SWEP.Instructions = "M1: Bite, M2: Bark"
+
+SWEP.Category = "SWEPS"
+SWEP.PrintName = "Dog SWEP"
+SWEP.AutoSwitchTo = true
+SWEP.AutoSwitchFrom	= true
+
+--Configured for DarkRP.
+--For Sandbox set these two to "true"
+SWEP.Spawnable = true
+SWEP.AdminOnly = false
+
+SWEP.Slot = 1
+SWEP.SlotPos = 3
+SWEP.DrawAmmo = false
+SWEP.DrawCrosshair = true
+
+--How should we hold the ability to bite?
+SWEP.HoldType = "fist"
+
+--Should they bite underwater?
+SWEP.FiresUnderwater = true
+
+--Since it's a pet's ability to bite, it doesn't need ammo
+SWEP.Primary.ClipSize = -1
+SWEP.Primary.DefaultClip = -1
+
+--Attributes of biting someone
+SWEP.Primary.NumberofShots = 1
+SWEP.Primary.Force = 20
+SWEP.Primary.Damage = 25
+SWEP.Primary.Recoil = 5
+
+--Semi-auto biting preferred, unless it's a beaver on cocainum
+SWEP.Primary.Automatic = false
+
+--Ammo is capacity to bite... so none.
+SWEP.Primary.Ammo = ""
+
+--The sound of biting
+SWEP.Primary.Sound = Sound("weapons/weapon_pet/doggrowl_1.mp3")
+
+--How beaver-like the bites should be in seconds
+SWEP.Primary.Delay = 4
+
+--Basically the same for the Secondary functions
+SWEP.Secondary.ClipSize = -1
+SWEP.Secondary.DefaultClip = -1
+SWEP.Secondary.Automatic = false
+SWEP.Secondary.Ammo = ""
+
+--How Alley Cat-like the barking should be in seconds
+SWEP.Secondary.Delay = 2
+
+--Open wide (initialize the biting)
+function SWEP:Initialize()	
+	util.PrecacheSound("sound/weapons/weapon_pet/dogbark_1.mp3")
+	util.PrecacheSound("sound/weapons/weapon_pet/doggrowl_2.mp3")
+	util.PrecacheSound("sound/weapons/weapon_pet/doggrowl_1.mp3")
+	
+	if (SERVER) then
+		self:SetWeaponHoldType(self.HoldType)
+		self.Weapon:SetMoveType( MOVETYPE_WALK )
+	end
+	
+	--The sounds of barking
+	DogBarks = {
+		Sound( "weapons/weapon_pet/dogbark_1.mp3" )
+	}
+end
+
+function SWEP:Deploy()
+	if SERVER then
+		self.Owner:DrawViewModel(false)
+		self.Owner:DrawWorldModel(false)
+	end
+end
+
+function SWEP:FindHullIntersection(VecSrc, tr, Mins, Maxs, pEntity)
+
+  local VecHullEnd = VecSrc + ((tr.HitPos - VecSrc) * 2)
+
+  local tracedata = {}
+
+  tracedata.start  = VecSrc  
+  tracedata.endpos = VecHullEnd
+  tracedata.filter = pEntity
+  tracedata.mask   = MASK_SOLID
+  tracedata.mins   = Mins
+  tracedata.maxs   = Maxs
+
+  local tmpTrace = util.TraceLine( tracedata )
+
+  if tmpTrace.Hit then
+    tr = tmpTrace
+    return tr
+  end
+
+  local Distance = 999999
+
+  for i = 0, 1 do
+    for j = 0, 1 do
+      for k = 0, 1 do
+
+        local VecEnd = Vector()
+
+        VecEnd.x = VecHullEnd.x + (i>0 and Maxs.x or Mins.x)
+        VecEnd.y = VecHullEnd.y + (j>0 and Maxs.y or Mins.y)
+        VecEnd.z = VecHullEnd.z + (k>0 and Maxs.z or Mins.z)
+
+        tracedata.endpos = VecEnd
+
+        tmpTrace = util.TraceLine( tracedata )
+
+        if tmpTrace.Hit then
+          ThisDistance = (tmpTrace.HitPos - VecSrc):Length()
+          if (ThisDistance < Distance) then
+            tr = tmpTrace
+            Distance = ThisDistance
+          end
+        end
+      end -- for k
+    end -- for j
+  end --for i
+
+  return tr
+end
+
+--The bite of the pet.
+function SWEP:PrimaryAttack()
+	if not self:CanPrimaryAttack() then return end
+	self.Weapon:SetNextPrimaryFire(CurTime()+self.Primary.Delay)
+	self.Weapon:SetNextSecondaryFire(CurTime()+self.Primary.Delay)
+	self.Weapon:EmitSound(self.Primary.Sound)
+	
+	--the meat of the bite
+	local weapon = self.Weapon
+	local biter = self:GetOwner()
+	local range = 50
+	local aimvec = biter:GetAimVector()
+	local biteSrc = biter:GetShootPos()
+	local biteRng = biteSrc+aimvec*range
+	local trace = self.Owner:GetEyeTrace()
+	local tracedata = {}
+	
+	tracedata.start = biteSrc
+	tracedata.endpos = biteRng
+	tracedata.filter = biter
+	tracedata.mask = MASK_SOLID
+	tracedata.mins = Vector(-16, -16, -18) -- head_hull_mins
+	tracedata.maxs = Vector(16, 16, 18) -- head_hull_maxs
+	
+	local tr = util.TraceLine(tracedata)
+	if not tr.Hit then tr = util.TraceHull(tracedata) end
+	if tr.Hit and (not (IsValid(tr.Entity) and tr.Entity) or tr.HitWorld) then 
+		-- Calculate the point of intersection of the line (or hull) and the object we hit
+		-- This is and approximation of the "best" intersection
+		local hullDuckMins, hullDuckMaxs = biter:GetHullDuck()
+		tr = self:FindHullIntersection(biteSrc, tr, hullDuckMins, hullDuckMaxs, biter)
+		biteRng = tr.HitPos -- This is the point on the actual surface (the hull could have hit space)
+	end
+	
+	local HitEntity = IsValid(tr.Entity) and tr.Entity or Entity(0)
+	local damage = self.Primary.Damage
+	local force = aimvec:GetNormalized() * 300 * self.Primary.Force
+	local damageinfo = DamageInfo()
+	damageinfo:SetAttacker(biter)
+	damageinfo:SetInflictor(self)
+	damageinfo:SetDamage(damage)
+	damageinfo:SetDamageType(bit.bor(DMG_BULLET,DMG_NEVERGIB))
+	damageinfo:SetDamageForce(force)
+	damageinfo:SetDamagePosition(biteRng)
+	
+	HitEntity:DispatchTraceAttack(damageinfo, tr, aimvec)
+	
+	if tr.HitWorld and not tr.HitSky then
+		local effectdata = EffectData()
+		effectdata:SetOrigin(tr.HitPos + tr.HitNormal)
+		effectdata:SetStart(tr.StartPos)
+		effectdata:SetSurfaceProp(tr.SurfaceProps)
+		effectdata:SetDamageType(DMG_SLASH)
+		effectdata:SetHitBox(tr.HitBox)
+		effectdata:SetNormal(tr.HitNormal)
+		effectdata:SetEntity(tr.Entity)
+		effectdata:SetAngles(aimvec:Angle())
+		util.Effect("biteImpact", effectdata)
+		util.Decal("ManhackCut", biteSrc - aimvec, biteRng + aimvec, true)
+		--weapon:EmitSound(Sound("Weapon_Crowbar.Melee_Hit"))
+	elseif trace.Entity:IsPlayer() or trace.Entity:IsNPC() or trace.Entity:GetClass() == "prop_ragdoll" then
+		local effectdata = EffectData()
+		util.Effect( "BloodImpact", effectdata )
+		--weapon:EmitSound(Sound("Weapon_Crowbar.Melee_Hit"))
+	end
+	
+	self.Owner:ViewPunch(Angle(rnda, rndb, rnda))
+end
+
+function SWEP:CanPrimaryAttack()
+	if (self.Weapon.Primary.ClipSize <= 0) then
+		return true
+	end
+end
+
+--The bark, should be worse than the bite.
+function SWEP:SecondaryAttack()
+	self:CanSecondaryAttack()
+
+	--the wood of the bark
+	if self.Owner:Alive() then
+		self:Bark()
+		self.Owner:ViewPunch(Angle(rnda, rndb, rnda))
+		self.Weapon:SetNextPrimaryFire(CurTime()+self.Secondary.Delay)
+		self.Weapon:SetNextSecondaryFire(CurTime()+self.Secondary.Delay)
+	end
+end
+
+function SWEP:CanSecondaryAttack()
+	if (self.Weapon.Secondary.ClipSize <= 0) then
+		return true
+	end
+end
+
+function SWEP:Bark()
+	pos = self.Owner:GetShootPos()
+	ang = self.Owner:GetAimVector()
+	
+	self.Weapon:EmitSound(DogBarks[math.random(1,#DogBarks)])
+	
+	if (SERVER) and IsValid(self.Owner) and IsValid(self.Weapon) then
+		local bark = {}
+		bark.Num = self.Primary.NumberofShots
+		bark.Src = pos
+		bark.Dir = ang
+		local rnda = self.Primary.Recoil*-1
+		local rndb = self.Primary.Recoil*math.random(-1,1)
+		self.Weapon:EmitSound(DogBarks[math.random(1,#DogBarks)])
+	end
+end
+
+--extra necessary unnecessary shit
+function SWEP:Reload()
+end
+
+function SWEP:Think()
+end
